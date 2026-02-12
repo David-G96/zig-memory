@@ -1,6 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const DefaultDeleter = @import("default_deleter.zig").DefaultDeleter;
+const DefaultDeleter = @import("deleter.zig").DefaultDeleter;
 
 pub fn SharedPtr(comptime T: type) type {
     return SharedPtrWithDeleter(T, DefaultDeleter(T));

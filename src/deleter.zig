@@ -13,6 +13,7 @@ const std = @import("std");
 /// 1. `deinit(*T)`
 /// 2. `deinit(T)`
 /// 3. `deinit(*T, Allocator)`
+/// 4. `deinit(T, Allocator)`
 pub fn DefaultDeleter(comptime T: type) type {
     return struct {
         const type_info = @typeInfo(T);
@@ -53,6 +54,8 @@ pub fn DefaultDeleter(comptime T: type) type {
         }
     };
 }
+
+// TODO: Add customize StatefulDeleter & StatelessDeleter
 
 test "size of DefaultDeleter" {
     try std.testing.expectEqual(0, @sizeOf(DefaultDeleter(u8)));

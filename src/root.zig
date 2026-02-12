@@ -1,4 +1,4 @@
-pub const DefaultDeleter = @import("default_deleter.zig").DefaultDeleter;
+pub const DefaultDeleter = @import("deleter.zig").DefaultDeleter;
 
 pub const SharedPtr = @import("shared_ptr.zig").SharedPtr;
 pub const SharePtrWithDeleter = @import("shared_ptr.zig").SharedPtrWithDeleter;

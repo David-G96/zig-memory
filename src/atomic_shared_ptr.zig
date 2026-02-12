@@ -1,6 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const DefaultDeleter = @import("default_deleter.zig").DefaultDeleter;
+const DefaultDeleter = @import("deleter.zig").DefaultDeleter;
 
 fn AtomicInner(comptime T: type, comptime Deleter: type) type {
     return struct {
