@@ -1,5 +1,18 @@
 const std = @import("std");
 
+/// # Default Deleter
+/// ## Support
+/// * POD/Trivial date types. e.g. u8, bool
+/// * RAII date types.
+///
+/// ***Requirement:***
+/// 1. `deinit` is declared as a member function.
+/// 2. `deinit` must have 1 or 2 arguments.
+///
+/// Valid forms are:
+/// 1. `deinit(*T)`
+/// 2. `deinit(T)`
+/// 3. `deinit(*T, Allocator)`
 pub fn DefaultDeleter(comptime T: type) type {
     return struct {
         const type_info = @typeInfo(T);
@@ -22,7 +35,11 @@ pub fn DefaultDeleter(comptime T: type) type {
                                         T.deinit(value.*);
                                     }
                                 } else if (deinit_func.params.len == 2) {
-                                    T.deinit(value, alloc);
+                                    if (@typeInfo(deinit_func.params[0].type.?) == .pointer) {
+                                        T.deinit(value, alloc);
+                                    } else {
+                                        T.deinit(value.*, alloc);
+                                    }
                                 }
                             },
                             else => {
