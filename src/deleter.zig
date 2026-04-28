@@ -41,6 +41,8 @@ pub fn DefaultDeleter(comptime T: type) type {
                                     } else {
                                         T.deinit(value.*, alloc);
                                     }
+                                } else {
+                                    @compileError("`deinit` must have 1 or 2 arguments");
                                 }
                             },
                             else => {

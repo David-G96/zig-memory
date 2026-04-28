@@ -3,43 +3,39 @@ test "example" {
     const SharedPtr = @import("shared_ptr.zig").SharedPtr;
     const WeakPtr = @import("shared_ptr.zig").WeakPtr;
 
-    var sp1 = try SharedPtr(u8).init(1, std.heap.page_allocator);
-    defer sp1.deinit(std.heap.page_allocator);
+    const alloc = std.testing.allocator;
+
+    var sp1 = try SharedPtr(u8).init(1, alloc);
+    defer sp1.deinit(alloc);
     {
-        var sp2 = try sp1.clone();
-        defer sp2.deinit(std.heap.page_allocator);
+        var sp2 = sp1.clone();
+        defer sp2.deinit(alloc);
         sp2.get_mut().* = 2;
     }
 
-    std.debug.print("\nsp1 is {}\n", .{sp1.get().*});
+    try std.testing.expectEqual(@as(u8, 2), sp1.get().*);
 
     var wp1 = WeakPtr(u8).empty;
-    defer wp1.deinit(std.heap.page_allocator);
+    defer wp1.deinit(alloc);
 
     {
-        var sp = try SharedPtr(u8).init(99, std.heap.page_allocator);
-        defer sp.deinit(std.heap.page_allocator);
-        wp1.assign(WeakPtr(u8).init(sp), std.heap.page_allocator);
-        // ! 不要这么使用！！！这会导致upgraded无法被deinit，导致内存泄漏！
-        // if (wp1.lock()) |upgraded| {
-        //     std.debug.print("wp1 is {}\n", .{upgraded.get().*});
-        // } else {
-        //     std.debug.print("wp1 is not expired\n", .{});
-        // }
+        var sp = try SharedPtr(u8).init(99, alloc);
+        defer sp.deinit(alloc);
+        wp1.assignFromShared(&sp, alloc);
         if (wp1.expired()) {
-            std.debug.print("wp1 is expired\n", .{});
+            try std.testing.expect(false);
         } else {
             var upgraded = wp1.lock().?;
-            defer upgraded.deinit(std.heap.page_allocator);
-            std.debug.print("wp1 is {}\n", .{upgraded.get().*});
+            defer upgraded.deinit(alloc);
+            try std.testing.expectEqual(@as(u8, 99), upgraded.get().*);
         }
     }
 
     if (wp1.expired()) {
-        std.debug.print("wp1 is expired\n", .{});
+        try std.testing.expect(true);
     } else {
         var upgraded = wp1.lock().?;
-        defer upgraded.deinit(std.heap.page_allocator);
-        std.debug.print("wp1 is {}\n", .{upgraded.get().*});
+        defer upgraded.deinit(alloc);
+        try std.testing.expect(false);
     }
 }

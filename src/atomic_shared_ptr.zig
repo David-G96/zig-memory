@@ -63,7 +63,7 @@ pub fn AtomicSharedPtrWithDeleter(comptime T: type, comptime Deleter: type) type
             }
         }
 
-        pub fn assign(self: *Self, other: Self, alloc: Allocator) void {
+        pub fn assign(self: *Self, other: *const Self, alloc: Allocator) void {
             if (self.inner == other.inner) return;
             _ = other.inner.strong.fetchAdd(1, .monotonic);
             self.deinit(alloc);
@@ -83,6 +83,11 @@ pub fn AtomicSharedPtrWithDeleter(comptime T: type, comptime Deleter: type) type
         pub fn useCount(self: *const Self) usize {
             return self.inner.strong.load(.monotonic);
         }
+
+        pub fn clone(self: *const Self) Self {
+            _ = self.inner.strong.fetchAdd(1, .monotonic);
+            return Self{ .inner = self.inner };
+        }
     };
 }
 
@@ -101,7 +106,7 @@ pub fn AtomicWeakPtrWithDeleter(comptime T: type, comptime Deleter: type) type {
             .inner = null,
         };
 
-        pub fn init(shared: StrongType) Self {
+        pub fn init(shared: *const StrongType) Self {
             _ = shared.inner.weak.fetchAdd(1, .monotonic);
             return .{ .inner = shared.inner };
         }
@@ -134,13 +139,20 @@ pub fn AtomicWeakPtrWithDeleter(comptime T: type, comptime Deleter: type) type {
             return inner.strong.load(.monotonic) == 0;
         }
 
-        pub fn assign(self: *Self, other: Self, alloc: Allocator) void {
+        pub fn assign(self: *Self, other: *const Self, alloc: Allocator) void {
             if (self.inner == other.inner) return;
             if (other.inner) |i| {
                 _ = i.weak.fetchAdd(1, .monotonic);
             }
             self.deinit(alloc);
             self.inner = other.inner;
+        }
+
+        pub fn assignFromShared(self: *Self, shared: *const StrongType, alloc: Allocator) void {
+            if (self.inner == shared.inner) return;
+            _ = shared.inner.weak.fetchAdd(1, .monotonic);
+            self.deinit(alloc);
+            self.inner = shared.inner;
         }
     };
 }
@@ -162,7 +174,7 @@ test "AtomicSharedPtr assignment and ref counting" {
     var sp2 = try AtomicSharedPtr(i32).init(200, allocator);
     defer sp2.deinit(allocator);
 
-    sp2.assign(sp1, allocator);
+    sp2.assign(&sp1, allocator);
 
     try std.testing.expectEqual(@as(i32, 100), sp2.get().*);
     try std.testing.expectEqual(@as(usize, 2), sp1.useCount());
@@ -175,7 +187,7 @@ test "AtomicWeakPtr basic usage" {
     var sp = try AtomicSharedPtr(i32).init(50, allocator);
     defer sp.deinit(allocator);
 
-    var wp = AtomicWeakPtr(i32).init(sp);
+    var wp = AtomicWeakPtr(i32).init(&sp);
     defer wp.deinit(allocator);
 
     try std.testing.expect(!wp.expired());
@@ -197,9 +209,9 @@ test "AtomicWeakPtr expiration" {
     {
         var sp = try AtomicSharedPtr(i32).init(10, allocator);
         defer sp.deinit(allocator);
-        var temp_wp = AtomicWeakPtr(i32).init(sp);
+        var temp_wp = AtomicWeakPtr(i32).init(&sp);
         defer temp_wp.deinit(allocator);
-        wp.assign(temp_wp, allocator);
+        wp.assign(&temp_wp, allocator);
         try std.testing.expect(!wp.expired());
     }
 
@@ -214,9 +226,7 @@ test "AtomicSharedPtr concurrency" {
 
     const ThreadFn = struct {
         fn run(ptr: AtomicSharedPtr(usize), alloc: Allocator) void {
-            var local_sp = ptr;
-            // Artificially increase ref count to simulate shared ownership in thread
-            _ = local_sp.inner.strong.fetchAdd(1, .monotonic);
+            var local_sp = ptr.clone();
             defer local_sp.deinit(alloc);
 
             _ = local_sp.inner.value; // Access value

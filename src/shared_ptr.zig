@@ -42,7 +42,7 @@ pub fn SharedPtrWithDeleter(comptime T: type, comptime Deleter: type) type {
             self.inner.strong -= 1;
         }
 
-        pub fn assign(self: *Self, other: Self, alloc: Allocator) void {
+        pub fn assign(self: *Self, other: *const Self, alloc: Allocator) void {
             if (self.inner == other.inner) return;
             other.inner.strong += 1;
             self.deinit(alloc);
@@ -63,13 +63,11 @@ pub fn SharedPtrWithDeleter(comptime T: type, comptime Deleter: type) type {
             return &self.inner.value;
         }
 
-        pub fn useCount(self: *Self) usize {
+        pub fn useCount(self: *const Self) usize {
             return self.inner.strong;
         }
 
-        pub fn clone(
-            self: *Self,
-        ) Allocator.Error!Self {
+        pub fn clone(self: *const Self) Self {
             self.inner.strong += 1;
             return Self{ .inner = self.inner };
         }
@@ -91,7 +89,7 @@ pub fn WeakPtrWithDeleter(comptime T: type, comptime Deleter: type) type {
             .inner = null,
         };
 
-        pub fn init(shared: StrongType) Self {
+        pub fn init(shared: *const StrongType) Self {
             shared.inner.weak += 1;
             return .{ .inner = shared.inner };
         }
@@ -120,14 +118,21 @@ pub fn WeakPtrWithDeleter(comptime T: type, comptime Deleter: type) type {
             return inner.strong == 0;
         }
 
-        pub fn assign(self: *Self, other: Self, alloc: Allocator) void {
+        pub fn assign(self: *Self, other: *const Self, alloc: Allocator) void {
             if (self.inner == other.inner) return;
             if (other.inner) |i| i.weak += 1;
             self.deinit(alloc);
             self.inner = other.inner;
         }
 
-        pub fn borrow(self: *Self) ?*const T {
+        pub fn assignFromShared(self: *Self, shared: *const StrongType, alloc: Allocator) void {
+            if (self.inner == shared.inner) return;
+            shared.inner.weak += 1;
+            self.deinit(alloc);
+            self.inner = shared.inner;
+        }
+
+        pub fn borrow(self: *const Self) ?*const T {
             const inner = self.inner orelse return null;
             if (inner.strong == 0) return null;
             return &inner.value;
@@ -162,7 +167,7 @@ test "Trivial SharedPtr" {
     var sp2 = try SharedPtr(u8).init(11, std.testing.allocator);
     defer sp2.deinit(std.testing.allocator);
 
-    sp2.assign(sp1, std.testing.allocator);
+    sp2.assign(&sp1, std.testing.allocator);
 }
 
 test "RAII SharedPTr" {
@@ -175,7 +180,7 @@ test "RAII SharedPTr" {
     var sp2 = try SharedPtr(std.ArrayList(u8)).init(std.ArrayList(u8).empty, std.testing.allocator);
     defer sp2.deinit(std.testing.allocator);
 
-    sp2.assign(sp1, std.testing.allocator);
+    sp2.assign(&sp1, std.testing.allocator);
 
     try std.testing.expect(sp1.inner == sp2.inner);
 }
@@ -190,12 +195,10 @@ test "cyclic reference" {
     defer node2.deinit(std.testing.allocator);
 
     // 构造循环引用: node1 -> node2
-    node2.inner.strong += 1; // 手动增加引用计数（模拟拷贝）
-    node1.inner.value.next = node2;
+    node1.inner.value.next = node2.clone();
 
     // 构造循环引用: node2 -> node1
-    node1.inner.strong += 1;
-    node2.inner.value.next = node1;
+    node2.inner.value.next = node1.clone();
 
     try std.testing.expectEqual(2, node1.useCount());
     try std.testing.expectEqual(2, node2.useCount());
@@ -220,12 +223,10 @@ test "arena cyclic reference" {
     defer node2.deinit(alloc);
 
     // 构造循环引用: node1 -> node2
-    node2.inner.strong += 1; // 手动增加引用计数（模拟拷贝）
-    node1.inner.value.next = node2;
+    node1.inner.value.next = node2.clone();
 
     // 构造循环引用: node2 -> node1
-    node1.inner.strong += 1;
-    node2.inner.value.next = node1;
+    node2.inner.value.next = node1.clone();
 
     try std.testing.expectEqual(2, node1.useCount());
     try std.testing.expectEqual(2, node2.useCount());
