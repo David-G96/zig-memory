@@ -14,6 +14,7 @@ pub fn SharedPtrWithDeleter(comptime T: type, comptime Deleter: type) type {
 
         inner: *Inner(T, Deleter),
 
+        /// Construct a SharedPtr
         pub fn init(value: T, alloc: Allocator) Allocator.Error!Self {
             const inner = try alloc.create(Inner(T, Deleter));
             inner.* = Inner(T, Deleter).init(value, Deleter{});
@@ -54,12 +55,23 @@ pub fn SharedPtrWithDeleter(comptime T: type, comptime Deleter: type) type {
             other.inner = temp.inner;
         }
 
-        pub fn get(self: *Self) *T {
+        pub fn get(self: *const Self) *const T {
+            return &self.inner.value;
+        }
+
+        pub fn get_mut(self: *Self) *T {
             return &self.inner.value;
         }
 
         pub fn useCount(self: *Self) usize {
             return self.inner.strong;
+        }
+
+        pub fn clone(
+            self: *Self,
+        ) Allocator.Error!Self {
+            self.inner.strong += 1;
+            return Self{ .inner = self.inner };
         }
     };
 }
@@ -113,6 +125,12 @@ pub fn WeakPtrWithDeleter(comptime T: type, comptime Deleter: type) type {
             if (other.inner) |i| i.weak += 1;
             self.deinit(alloc);
             self.inner = other.inner;
+        }
+
+        pub fn borrow(self: *Self) ?*const T {
+            const inner = self.inner orelse return null;
+            if (inner.strong == 0) return null;
+            return &inner.value;
         }
     };
 }
